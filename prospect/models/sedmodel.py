@@ -15,6 +15,7 @@ from scipy.stats import multivariate_normal as mvn
 from sedpy.observate import getSED
 
 from .parameters import ProspectorParams
+from .hyperparameters import ProspectorHyperParams
 from ..sources.constants import to_cgs_at_10pc as to_cgs
 from ..sources.constants import cosmo, lightspeed, ckms, jansky_cgs
 from ..utils.smoothing import smoothspec
@@ -22,7 +23,8 @@ from ..utils.smoothing import smoothspec
 
 __all__ = ["SpecModel", "PolySpecModel", "SplineSpecModel",
            "LineSpecModel", "AGNSpecModel",
-           "SedModel", "PolySedModel", "PolyFitModel"]
+           "SedModel", "PolySedModel", "PolyFitModel",
+           "HyperSpecModel", "HyperPolySpecModel"]
 
 
 class SpecModel(ProspectorParams):
@@ -378,7 +380,7 @@ class SpecModel(ProspectorParams):
         # This part has to go in every call
         linewidth = nsigma * self._ewave_obs / ckms * self._eline_sigma_kms
         pixel_mask = (np.abs(self._outwave - self._ewave_obs[:, None]) < linewidth[:, None])
-        pixel_mask = pixel_mask & obs["mask"][None, :]
+        pixel_mask = pixel_mask & obs.get("mask")[None, :]
         self._valid_eline = pixel_mask.any(axis=1) & self._use_eline
 
         # --- wavelengths corresponding to valid lines ---
@@ -404,13 +406,17 @@ class SpecModel(ProspectorParams):
             # unless some are explicitly fixed
             lnames_to_fit = self.params.get('elines_to_fit', all_lines)
             lnames_to_fix = self.params.get('elines_to_fix', np.array([]))
+            assert np.all(np.isin(lnames_to_fit, all_lines)), f"Some lines to fit ({lnames_to_fit})are not in the cloudy grid; see $SPS_HOME/data/emlines_info.dat for accepted names"
+            assert np.all(np.isin(lnames_to_fix, all_lines)), f"Some fixed lines ({lnames_to_fix}) are not in the cloudy grid; see $SPS_HOME/data/emlines_info.dat for accepted names"
             self._fit_eline = np.isin(all_lines, lnames_to_fit) & ~np.isin(all_lines, lnames_to_fix)
         else:
             self._fit_eline = np.zeros(len(all_lines), dtype=bool)
 
         self._fix_eline = ~self._fit_eline
 
-        if self.params.get("elines_to_ignore", []):
+        if "elines_to_ignore" in self.params:
+            assert np.all(np.isin(self.params["elines_to_ignore"], self.emline_info["name"])), f"Some ignored lines lines ({self.params['elines_to_ignore']}) are not in the cloudy grid; see $SPS_HOME/data/emlines_info.dat for accepted names"
+
             self._use_eline = ~np.isin(self.emline_info["name"],
                                        self.params["elines_to_ignore"])
 
@@ -659,9 +665,8 @@ class PolySpecModel(SpecModel):
         """Implements a Chebyshev polynomial calibration model. This uses
         least-squares to find the maximum-likelihood Chebyshev polynomial of a
         certain order describing the ratio of the observed spectrum to the model
-        spectrum, conditional on all other parameters, using least squares. If
-        emission lines are being marginalized out, they are excluded from the
-        least-squares fit.
+        spectrum, conditional on all other parameters. If emission lines are
+        being marginalized out, they are excluded from the least-squares fit.
 
         :returns cal:
            A polynomial given by :math:`\sum_{m=0}^M a_{m} * T_m(x)`.
@@ -670,11 +675,10 @@ class PolySpecModel(SpecModel):
             self.set_parameters(theta)
 
         # norm = self.params.get('spec_norm', 1.0)
-        polyopt = ((self.params.get('polyorder', 0) > 0) &
+        order = np.squeeze(self.params.get('polyorder', 0))
+        polyopt = ((order > 0) &
                    (obs.get('spectrum', None) is not None))
         if polyopt:
-            order = self.params['polyorder']
-
             # generate mask
             # remove region around emission lines if doing analytical marginalization
             mask = obs.get('mask', np.ones_like(obs['wavelength'], dtype=bool)).copy()
@@ -691,7 +695,7 @@ class PolySpecModel(SpecModel):
             ATA = np.dot(A.T, A / yvar[:, None])
             reg = self.params.get('poly_regularization', 0.)
             if np.any(reg > 0):
-                ATA += reg**2 * np.eye(order)
+                ATA += reg**2 * np.eye(order+1)
             ATAinv = np.linalg.inv(ATA)
             c = np.dot(ATAinv, np.dot(A.T, y / yvar))
             Afull = chebvander(x, order)
@@ -908,15 +912,18 @@ class AGNSpecModel(SpecModel):
 
     def init_aline_info(self):
         """AGN line spectrum. Based on data as reported in Richardson et al.
-        2014 (Table 3, the 'a42' dataset) and normalized to Hbeta.index=48 is Hbeta
+        2014 (Table 3, the 'a42' dataset) and normalized to Hbeta.
+
+        index=59 is Hbeta
         """
-        ainds = np.array([31, 33, 34, 35, 37, 42, 43, 44, 48,
-                          49, 50, 52, 56, 57, 58, 60, 61, 62,
-                          63, 64, 65, 66, 68])
+        ainds = np.array([38, 40, 41, 43, 45, 50, 51, 52, 59,
+                          61, 62, 64, 68, 69, 70, 72, 73, 74,
+                          75, 76, 77, 78, 80])
         afluxes = np.array([2.96, 0.06, 0.1 , 1.  , 0.2 , 0.25, 0.48, 0.13, 1.,
                             2.87, 8.53, 0.07, 0.02, 0.1 , 0.33, 0.09, 0.79, 2.86,
                             2.13, 0.03, 0.77, 0.65, 0.19])
-        self._aline_lum = np.zeros(128)
+        self._aline_lum = np.zeros(len(self.emline_info))
+        assert np.abs(self.emline_info["wave"][59] - 4863) < 2
         self._aline_lum[ainds] = afluxes
 
     def predict_spec(self, obs, sigma_spec=None, **extras):
@@ -1222,10 +1229,10 @@ class PolySedModel(SedModel):
             self.set_parameters(theta)
 
         norm = self.params.get('spec_norm', 1.0)
-        polyopt = ((self.params.get('polyorder', 0) > 0) &
+        order = np.squeeze(self.params.get('polyorder', 0))
+        polyopt = ((order > 0) &
                    (obs.get('spectrum', None) is not None))
         if polyopt:
-            order = self.params['polyorder']
             mask = obs.get('mask', slice(None))
             # map unmasked wavelengths to the interval -1, 1
             # masked wavelengths may have x>1, x<-1
@@ -1297,6 +1304,14 @@ class PolyFitModel(SedModel):
                 return np.exp(self.params.get('spec_norm', 0) + poly)
         else:
             return 1.0 * self.params.get('spec_norm', 1.0)
+
+
+class HyperSpecModel(ProspectorHyperParams, SpecModel):
+    pass
+
+class HyperPolySpecModel(ProspectorHyperParams, PolySpecModel):
+    pass
+
 
 
 def ln_mvn(x, mean=None, cov=None):
