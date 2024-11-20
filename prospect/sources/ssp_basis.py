@@ -438,7 +438,7 @@ class GaussianBasis(SSPBasis):
         return wave, spec / mtot, self.ssp.stellar_mass / mtot
     
     
-    def convert_sfh(mtot, age_center_gyr, sigma_age_gyr, epsilon=1e-4, maxage=None):
+    def convert_sfh(self, mtot, age_center_gyr, sigma_age_gyr, epsilon=1e-4, maxage=None):
         """Given arrays of agebins and formed masses with each bin, calculate a
         tabular SFH.  The resulting time vector has time points either side of
         each bin edge with a "closeness" defined by a parameter epsilon.
