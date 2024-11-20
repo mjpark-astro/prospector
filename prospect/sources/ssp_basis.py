@@ -15,7 +15,7 @@ import fsps
 from sedpy.observate import getSED
 
 __all__ = ["SSPBasis", "FastSSPBasis", "FastStepBasis",
-           "MultiSSPBasis"]
+           "MultiSSPBasis", "GaussianBasis"]
 
 
 to_cgs = to_cgs_at_10pc
