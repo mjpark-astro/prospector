@@ -561,6 +561,26 @@ TemplateLibrary["continuity_sfh"] = (_nonpar_continuity_,
                                      "Non-parameteric SFH fitting for mass in fixed time bins with a smoothness prior")
 
 # ----------------------------
+# --- Gaussian SFH ----
+# ----------------------------
+# A non-parametric Gaussian SFH model fitting center_age_gyr and sigma_age_gyr.
+
+_nonpar_gaussian_ = TemplateLibrary["ssp"]
+_ = _nonpar_gaussian_.pop("tage")
+
+_nonpar_gaussian_["sfh"]        = {"N": 1, "isfree": False, "init": 3, "units": "FSPS index"}
+# This is the *total*  mass formed, as a variable
+_nonpar_gaussian_["mtot"]    = {"N": 1, "isfree": True, "init": 1e10, 'units': 'Msun',
+                                     'prior': priors.TopHat(mini=1e7, maxi=1e13)}
+_nonpar_gaussian_["age_center_gyr"]    = {"N": 1, "isfree": True, "init": 1.0, 'units': 'Gyr',
+                                     'prior': priors.TopHat(mini=0.0001, maxi=14)}
+_nonpar_gaussian_["sigma_age_gyr"]    = {"N": 1, "isfree": True, "init": 0.1, 'units': 'Gyr',
+                                     'prior': priors.TopHat(mini=0.01, maxi=6.0)}
+
+TemplateLibrary["gaussian_sfh"] = (_nonpar_gaussian_,
+                                     "Non-parameteric Gaussian SFH fitting")
+
+# ----------------------------
 # --- Flexible Continuity SFH ----
 # ----------------------------
 # A non-parametric SFH model of mass in flexible time bins with a smoothness prior

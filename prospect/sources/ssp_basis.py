@@ -430,16 +430,15 @@ class GaussianBasis(SSPBasis):
         if np.min(np.diff(10**self.params['agebins'])) < 1e6:
             raise ValueError
 
-        #mtot = self.params['mass'].sum()
         mtot = self.params['mtot']
-        time, sfr, tmax = self.convert_sfh(self.params['mtot'], self.params['center_lbt_age'], self.params['sigma_age'])
+        time, sfr, tmax = self.convert_sfh(self.params['mtot'], self.params['age_center_gyr'], self.params['sigma_age_gyr'])
         self.ssp.params["sfh"] = 3  # Hack to avoid rewriting the superclass
         self.ssp.set_tabular_sfh(time, sfr)
         wave, spec = self.ssp.get_spectrum(tage=tmax, peraa=False)
         return wave, spec / mtot, self.ssp.stellar_mass / mtot
     
     
-    def convert_sfh(mtot, center_age_lbt, sigma_age, epsilon=1e-4, maxage=None):
+    def convert_sfh(mtot, age_center_gyr, sigma_age_gyr, epsilon=1e-4, maxage=None):
         """Given arrays of agebins and formed masses with each bin, calculate a
         tabular SFH.  The resulting time vector has time points either side of
         each bin edge with a "closeness" defined by a parameter epsilon.
@@ -452,11 +451,11 @@ class GaussianBasis(SSPBasis):
         :param mformed:
             The stellar mass formed in each bin.  ndarray of shape ``(nbin,)``
 
-        :param center_age_lbt:
+        :param age_center_gyr:
             The peak age of the Gaussian distribution
 
-        :param sigma_age:
-            The sigma of the Gaussian distribution of ages. The Gaussian distribution is clipped at 2*sigma_age.
+        :param sigma_age_gyr:
+            The sigma of the Gaussian distribution of ages. The Gaussian distribution is clipped at 2*sigma_age_gyr.
 
         :returns time:
             The output time array for use with sfh=3, in Gyr.  ndarray of shape (2*N)
@@ -471,17 +470,17 @@ class GaussianBasis(SSPBasis):
         ### create age bins from center and sigma of Gaussians
         # agebins: edge, in log(yr)
 
-        agelims = np.log10(np.array([center_age_lbt - 2*sigma_age-0.001, 
-                                    center_age_lbt - 2*sigma_age, 
-                                    center_age_lbt - 1.5*sigma_age, 
-                                    center_age_lbt - 1.0*sigma_age, 
-                                    center_age_lbt - 0.5*sigma_age,
-                                    center_age_lbt,
-                                    center_age_lbt + 0.5*sigma_age,
-                                    center_age_lbt + 1.0*sigma_age, 
-                                    center_age_lbt + 1.5*sigma_age, 
-                                    center_age_lbt + 2.0*sigma_age, 
-                                    center_age_lbt + 2.0*sigma_age+0.001]) * 1e9)
+        agelims = np.log10(np.array([age_center_gyr - 2.0*sigma_age_gyr-0.001, 
+                                    age_center_gyr - 2.0*sigma_age_gyr, 
+                                    age_center_gyr - 1.5*sigma_age_gyr, 
+                                    age_center_gyr - 1.0*sigma_age_gyr, 
+                                    age_center_gyr - 0.5*sigma_age_gyr,
+                                    age_center_gyr,
+                                    age_center_gyr + 0.5*sigma_age_gyr,
+                                    age_center_gyr + 1.0*sigma_age_gyr, 
+                                    age_center_gyr + 1.5*sigma_age_gyr, 
+                                    age_center_gyr + 2.0*sigma_age_gyr, 
+                                    age_center_gyr + 2.0*sigma_age_gyr+0.001]) * 1e9)
 
         if maxage is None:
             agelims = np.concatenate( ( [0.0], agelims, np.log10([cosmo.age(0).value * 1e9])))
