@@ -406,3 +406,111 @@ class MultiSSPBasis(SSPBasis):
     """
     def get_galaxy_spectrum(self):
         raise(NotImplementedError)
+
+
+class GaussianBasis(SSPBasis):
+    """Subclass of :py:class:`SSPBasis` that implements a "nonparameteric"
+    (i.e. binned) SFH.  This is accomplished by generating a tabular SFH with
+    the proper form to be passed to FSPS. The key parameters for this SFH are:
+
+      * ``agebins`` - array of shape ``(nbin, 2)`` giving the younger and older
+        (in lookback time) edges of each bin in log10(years)
+
+      * ``mass`` - array of shape ``(nbin,)`` giving the total stellar mass
+        (in solar masses) **formed** in each bin.
+    """
+
+    
+    def get_galaxy_spectrum(self, **params):
+        """Construct the tabular SFH and feed it to the ``ssp``.
+        """
+        self.update(**params)
+        # --- check to make sure agebins have minimum spacing of 1million yrs ---
+        #       (this can happen in flex models and will crash FSPS)
+        if np.min(np.diff(10**self.params['agebins'])) < 1e6:
+            raise ValueError
+
+        #mtot = self.params['mass'].sum()
+        mtot = self.params['mtot']
+        time, sfr, tmax = self.convert_sfh(self.params['mtot'], self.params['center_lbt_age'], self.params['sigma_age'])
+        self.ssp.params["sfh"] = 3  # Hack to avoid rewriting the superclass
+        self.ssp.set_tabular_sfh(time, sfr)
+        wave, spec = self.ssp.get_spectrum(tage=tmax, peraa=False)
+        return wave, spec / mtot, self.ssp.stellar_mass / mtot
+    
+    
+    def convert_sfh(mtot, center_age_lbt, sigma_age, epsilon=1e-4, maxage=None):
+        """Given arrays of agebins and formed masses with each bin, calculate a
+        tabular SFH.  The resulting time vector has time points either side of
+        each bin edge with a "closeness" defined by a parameter epsilon.
+
+        :param agebins:
+            An array of bin edges, log(yrs).  This method assumes that the
+            upper edge of one bin is the same as the lower edge of another bin.
+            ndarray of shape ``(nbin, 2)``
+
+        :param mformed:
+            The stellar mass formed in each bin.  ndarray of shape ``(nbin,)``
+
+        :param center_age_lbt:
+            The peak age of the Gaussian distribution
+
+        :param sigma_age:
+            The sigma of the Gaussian distribution of ages. The Gaussian distribution is clipped at 2*sigma_age.
+
+        :returns time:
+            The output time array for use with sfh=3, in Gyr.  ndarray of shape (2*N)
+
+        :returns sfr:
+            The output sfr array for use with sfh=3, in M_sun/yr.  ndarray of shape (2*N)
+
+        :returns maxage:
+            The maximum valid age in the returned isochrone.
+        """
+
+        ### create age bins from center and sigma of Gaussians
+        # agebins: edge, in log(yr)
+
+        agelims = np.log10(np.array([center_age_lbt - 2*sigma_age-0.001, 
+                                    center_age_lbt - 2*sigma_age, 
+                                    center_age_lbt - 1.5*sigma_age, 
+                                    center_age_lbt - 1.0*sigma_age, 
+                                    center_age_lbt - 0.5*sigma_age,
+                                    center_age_lbt,
+                                    center_age_lbt + 0.5*sigma_age,
+                                    center_age_lbt + 1.0*sigma_age, 
+                                    center_age_lbt + 1.5*sigma_age, 
+                                    center_age_lbt + 2.0*sigma_age, 
+                                    center_age_lbt + 2.0*sigma_age+0.001]) * 1e9)
+
+        if maxage is None:
+            agelims = np.concatenate( ( [0.0], agelims, np.log10([cosmo.age(0).value * 1e9])))
+        else:
+            agelims = np.concatenate( ( [0.0], agelims, np.log10([maxage])))
+        agebins = np.array([agelims[:-1], agelims[1:]]).T
+
+        #### create time vector
+        agebins_yrs = 10**agebins.T
+        dt = agebins_yrs[1, :] - agebins_yrs[0, :]
+        bin_edges = np.unique(agebins_yrs)
+        if maxage is None:
+            maxage = agebins_yrs.max()  # can replace maxage with something else, e.g. tuniv
+        t = np.concatenate((bin_edges * (1.-epsilon), bin_edges * (1+epsilon)))
+        t.sort()
+        t = t[1:-1] # remove older than oldest bin, younger than youngest bin
+        fsps_time = maxage - t
+        
+        #### calculate SFR at each t
+        mformed = np.array([0, 0, 0.044*mtot, 0.092*mtot, 0.15*mtot, 0.191*mtot, \
+                            0.191*mtot, 0.15*mtot, 0.092*mtot, 0.044*mtot, 0, 0]) / 0.954
+        # gaussian is clipped at 2sigma, so make the sum to be 1 by dividing it by 0.954. 
+
+        sfr = mformed / dt
+        sfrout = np.zeros_like(t)
+        sfrout[::2] = sfr
+        sfrout[1::2] = sfr  # * (1+epsilon)
+
+        # fsps_time/1e9 -- time since Big Bang in Gyr
+        # sfrout
+        
+        return (fsps_time / 1e9)[::-1], sfrout[::-1], maxage / 1e9
