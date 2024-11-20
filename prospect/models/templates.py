@@ -567,6 +567,7 @@ TemplateLibrary["continuity_sfh"] = (_nonpar_continuity_,
 
 _nonpar_gaussian_ = TemplateLibrary["ssp"]
 _ = _nonpar_gaussian_.pop("tage")
+_ = _nonpar_gaussian_.pop("mass")
 
 _nonpar_gaussian_["sfh"]        = {"N": 1, "isfree": False, "init": 3, "units": "FSPS index"}
 # This is the *total*  mass formed, as a variable
