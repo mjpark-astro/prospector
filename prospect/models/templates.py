@@ -567,12 +567,14 @@ TemplateLibrary["continuity_sfh"] = (_nonpar_continuity_,
 
 _nonpar_gaussian_ = TemplateLibrary["ssp"]
 _ = _nonpar_gaussian_.pop("tage")
-_ = _nonpar_gaussian_.pop("mass")
 
 _nonpar_gaussian_["sfh"]        = {"N": 1, "isfree": False, "init": 3, "units": "FSPS index"}
 # This is the *total*  mass formed, as a variable
 _nonpar_gaussian_["mtot"]    = {"N": 1, "isfree": True, "init": 1e10, 'units': 'Msun',
                                      'prior': priors.TopHat(mini=1e7, maxi=1e13)}
+
+_nonpar_gaussian_["mass"]    = {'N': 12, 'isfree': False, 'init': 1e6, 'units': r'M$_\odot$'}
+
 _nonpar_gaussian_["age_center_gyr"]    = {"N": 1, "isfree": True, "init": 1.0, 'units': 'Gyr',
                                      'prior': priors.TopHat(mini=0.0001, maxi=14)}
 _nonpar_gaussian_["sigma_age_gyr"]    = {"N": 1, "isfree": True, "init": 0.1, 'units': 'Gyr',
